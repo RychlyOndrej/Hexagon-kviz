@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AZ-kvíz-up</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="orbs"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
+
+<!-- ═══ SETUP ═══ -->
+<div id="s-setup" class="screen active">
+  <div class="logo"><h1>AZ-kvíz-up</h1><p>Hexagonální kvízová hra</p></div>
+  <div class="setup-grid">
+
+    <div class="card">
+      <div class="card-title">🎲 Herní plán</div>
+      <div class="field-row">
+        <span class="field-label">Poloměr plánu</span>
+        <input type="number" id="cfg-radius" value="3" min="2" max="10">
+        <span style="font-size:.78rem;color:var(--muted);" id="hex-count-lbl">19 políček</span>
+      </div>
+
+      <div class="field-row">
+        <span class="field-label">Čas na odpověď</span>
+        <input type="number" id="cfg-timer" value="30" min="5" max="120">
+        <span style="font-size:.78rem;color:var(--muted);">sekund</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Power-upy</span>
+        <input type="number" id="cfg-powerups" value="6" min="0" max="20">
+        <span style="font-size:.78rem;color:var(--muted);">políček</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📂 Soubory s otázkami (více CSV)</div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".csv" multiple>
+        <div style="font-size:1.5rem;margin-bottom:.3rem;">📋</div>
+        <p>Přetáhněte CSV soubory nebo klikněte</p>
+        <p style="font-size:.75rem;margin-top:.2rem;">Každý soubor = kategorie otázek</p>
+      </div>
+      <div class="file-list" id="file-list"></div>
+      <button class="btn-sm" style="margin-top:.5rem;" onclick="downloadSampleCSV()">⬇️ Stáhnout vzor CSV</button>
+    </div>
+
+    <div class="card full">
+      <div class="card-title">👥 Týmy (2–6)</div>
+      <div class="team-controls">
+        <button class="btn-sm add" id="btn-add-t" onclick="addTeam()">+ Přidat</button>
+        <button class="btn-sm rem" id="btn-rem-t" onclick="removeTeam()">− Odebrat</button>
+        <span class="tcount" id="tcount-lbl"></span>
+      </div>
+      <div class="team-rows" id="team-rows"></div>
+      <button class="btn-start" id="btn-start" disabled onclick="goToPowerupSetup()">⚡ Nastavit tajná políčka →</button>
+      <div style="color:var(--muted);font-size:.75rem;text-align:center;margin-top:.5rem;" id="setup-hint"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ POWERUP PLACEMENT ═══ -->
+<div id="s-powerups" class="screen">
+  <div class="pu-header">
+    <h2>🗺️ Tajná políčka</h2>
+    <p>Klikni na políčka hexagonálního plánu a přiřaď jim typ power-upu (jen moderátor vidí tuto obrazovku)</p>
+  </div>
+  <div class="pu-layout">
+    <svg id="pu-svg"></svg>
+    <div class="pu-controls">
+      <div class="pu-sel-title">Vybraný typ</div>
+      <button class="pu-type-btn active" data-pu="shield" onclick="selectPuType('shield',this)">🛡️ Štít</button>
+      <button class="pu-type-btn" data-pu="bomb" onclick="selectPuType('bomb',this)">💣 Bomba</button>
+      <button class="pu-type-btn" data-pu="ghost" onclick="selectPuType('ghost',this)">👻 Duch</button>
+      <button class="pu-type-btn" data-pu="web" onclick="selectPuType('web',this)">🕸️ Pavučina</button>
+      <button class="pu-type-btn" data-pu="none" onclick="selectPuType('none',this)">🗑️ Odebrat</button>
+      <div class="pu-summary" id="pu-summary"></div>
+      <button class="btn-pu-go" onclick="startGame()">▶ Spustit hru</button>
+      <button class="btn-pu-clear" onclick="clearAllPowerups()">Vymazat vše</button>
+      <button class="btn-sm" style="width:100%;margin-top:.5rem;" onclick="showScreen('s-setup')">← Zpět</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ GAME ═══ -->
+<div id="s-game" class="screen">
+  <div class="game-top">
+    <span class="game-logo">⬡ AZ-kvíz-up</span>
+    <div class="turn-pill" id="turn-pill">
+      <span class="turn-dot" id="turn-dot"></span>
+      <span id="turn-name">—</span>
+    </div>
+    <div id="atk-mode-label" class="hidden" style="background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.4);color:#e74c3c;border-radius:8px;padding:.3rem .75rem;font-size:.8rem;font-weight:700;">⚔️ ÚTOK – vyber sousední políčko soupeře</div>
+    <div id="override-mode-label" class="hidden" style="background:rgba(155,89,182,.15);border:1px solid rgba(155,89,182,.4);color:#9b59b6;border-radius:8px;padding:.3rem .75rem;font-size:.8rem;font-weight:700;">🎨 PŘIȖAZOVÁNÍ – klikni na libovolné políčko</div>
+    <div id="pick-mode-label" class="hidden" style="background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);color:#FFA500;border-radius:8px;padding:.3rem .75rem;font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:.5rem;">
+      <span id="pick-mode-text"></span>
+      <button onclick="cancelPickMode()" style="background:none;border:1px solid rgba(255,165,0,.5);color:#FFA500;border-radius:6px;padding:.1rem .5rem;font-family:'Outfit',sans-serif;font-size:.75rem;cursor:pointer;">✕ zrušit</button>
+    </div>
+    <button class="ibtn" style="margin-left:auto;" onclick="toggleModPanel()" title="Moderátorský panel">🔧</button>
+    <button class="ibtn" onclick="openModWindow()" title="Otevřít moderátorské okno" style="color:var(--gold);">🖥️</button>
+    <button class="ibtn" onclick="confirmEndGame()" title="Ukončit hru" style="color:#e74c3c;">✕</button>
+  </div>
+  <div class="game-main">
+    <div class="hex-area"><svg id="game-svg"></svg></div>
+    <div class="sidebar">
+      <!-- Timer -->
+      <div>
+        <div class="sb-title" style="margin-bottom:.5rem;">⏱ Časomíra</div>
+        <div class="timer-wrap">
+          <div class="timer-ring">
+            <svg width="76" height="76" viewBox="0 0 76 76">
+              <circle class="t-bg" cx="38" cy="38" r="33"/>
+              <circle class="t-fg" id="t-ring" cx="38" cy="38" r="33"/>
+            </svg>
+            <div class="t-text" id="t-text">30</div>
+          </div>
+          <div class="timer-btns">
+            <button class="ibtn" onclick="timerStart()" title="Spustit">▶</button>
+            <button class="ibtn" onclick="timerPause()" title="Pauza">⏸</button>
+            <button class="ibtn" onclick="timerReset()" title="Resetovat">↺</button>
+          </div>
+        </div>
+      </div>
+      <!-- Scoreboard -->
+      <div>
+        <div class="sb-title" style="margin-bottom:.5rem;">🏆 Skóre</div>
+        <div class="sb" id="sb-cards"></div>
+      </div>
+      <!-- Actions -->
+      <div>
+        <div class="sb-title" style="margin-bottom:.5rem;">🎮 Akce</div>
+        <div class="act-btns">
+          <button class="abtn on" id="auto-adv-btn" onclick="toggleAutoAdvance()">🔄 Auto-střídání týmů</button>
+          <button class="abtn" id="atk-btn" onclick="toggleAttackMode()">⚔️ Útokový režim</button>
+          <button class="abtn" id="override-btn" onclick="toggleOverrideMode()">🎨 Přiřadit políčko</button>
+          <button class="abtn ok" onclick="nextTurn()">→ Další tah ručně</button>
+          <button class="abtn" onclick="showDomination()">📊 Nadvláda (výsledky)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ QUESTION MODAL (hidden) ═══ -->
+<div class="qmodal hidden" id="qmodal">
+  <div class="qbox">
+    <div class="qmeta">
+      <span class="qtype" id="qm-type"></span>
+      <span style="color:var(--muted);font-size:.8rem;" id="qm-cat"></span>
+      <span id="qm-hex-info" style="font-size:.78rem;color:var(--muted);"></span>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:.5rem;">
+        <span id="q-timer-icon" style="font-size:1rem;">⏱</span>
+        <span id="q-timer-val" style="font-size:1.5rem;font-weight:900;color:var(--gold);min-width:2.5rem;text-align:right;">—</span>
+      </span>
+    </div>
+    <div class="qtext" id="qm-text"></div>
+    <img id="qm-img" class="qimg" src="" alt="" style="display:none"
+         onerror="this.style.display='none'">
+    <div class="rozstrel-note hidden" id="rozstrel-note">
+      🎯 <strong>Rozstřel!</strong> Šedé políčko – všechny týmy mohou vykřiknout odpověď. Kdo nejrychleji a správně, bere políčko.
+    </div>
+    <div class="qans-box" id="qans-box">
+      <div class="qans-lbl">✓ Správná odpověď</div>
+      <div class="qans-txt" id="qm-ans"></div>
+    </div>
+    <div class="duel-pick hidden" id="duel-pick"></div>
+    <div class="qactions" id="qactions">
+      <button class="qbtn reveal" onclick="revealAnswer()">👁 Zobrazit odpověď</button>
+      <button class="qbtn cancel" onclick="closeQuestion()">✕ Zavřít</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ POWER-UP REVEAL (hidden) ═══ -->
+<div class="pu-reveal hidden" id="pu-reveal">
+  <div class="pu-rbox">
+    <div class="pu-big" id="pu-r-icon"></div>
+    <div class="pu-rtitle" id="pu-r-title"></div>
+    <div class="pu-rdesc" id="pu-r-desc"></div>
+    <div class="pu-rteam" id="pu-r-team"></div>
+    <div class="pu-raction-row" id="pu-r-actions"></div>
+  </div>
+</div>
+
+<!-- ═══ MODERATOR PANEL ═══ -->
+<div class="mod-panel hidden" id="mod-panel">
+  <div class="mod-hdr" onclick="toggleModBody()">
+    <span>🔧</span><span class="mod-hdr-title">Moderátor</span>
+    <span style="margin-left:auto;font-size:.75rem;color:var(--muted);" id="mod-toggle-lbl">▲</span>
+  </div>
+  <div class="mod-body" id="mod-body">
+    <div>
+      <div class="mod-sec">Power-upy na plánu</div>
+      <svg id="mod-mini-svg"></svg>
+      <div class="mod-leg">
+        <span class="mod-leg-item">🛡️ Štít</span>
+        <span class="mod-leg-item">💣 Bomba</span>
+        <span class="mod-leg-item">👻 Duch</span>
+        <span class="mod-leg-item">🕸️ Past</span>
+      </div>
+    </div>
+    <div>
+      <div class="mod-sec">Aktuální otázka - odpověď</div>
+      <div id="mod-ans" style="font-size:.82rem;color:var(--gold);font-weight:700;min-height:1.2em;">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SHIELD OVERLAY (hidden) ═══ -->
+<div class="pu-reveal hidden" id="shield-overlay">
+  <div class="pu-rbox" style="border-color:#3498db;">
+    <div class="pu-big">🛡️</div>
+    <div class="pu-rtitle" style="color:#3498db;" id="shield-ol-title">Štít!</div>
+    <div class="pu-rdesc" id="shield-ol-desc"></div>
+    <div class="pu-raction-row">
+      <button class="pu-rbtn gold" style="background:#3498db;" onclick="shieldDecision(true)">🛡️ Použít štít</button>
+      <button class="pu-rbtn cancel" onclick="shieldDecision(false)">Neubránit se</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WIN OVERLAY (hidden) ═══ -->
+<div class="win-overlay hidden" id="win-overlay">
+  <div class="win-box">
+    <div class="win-emoji">🏆</div>
+    <div class="win-title">Vítěz!</div>
+    <div class="win-sub" id="win-sub"></div>
+    <div class="win-team" id="win-team"></div>
+    <button class="btn-newgame" onclick="location.reload()">🔄 Nová hra</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Moderátor – AZ-kvíz-up</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Outfit',sans-serif;background:#060a14;color:#fff;min-height:100vh;padding:1.25rem;display:flex;flex-direction:column;gap:1rem;}
+.top{display:flex;align-items:center;gap:1rem;}
+.logo{font-size:1.1rem;font-weight:900;color:#FFD700;}
+.turn-pill{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.15);border-radius:9px;padding:.3rem .85rem;font-size:.85rem;font-weight:700;display:flex;align-items:center;gap:.45rem;}
+.turn-dot{width:10px;height:10px;border-radius:50%;}
+.timer{margin-left:auto;font-size:2rem;font-weight:900;color:#FFD700;min-width:2.5rem;text-align:right;}
+.timer.low{color:#e74c3c;animation:pulse .5s ease infinite alternate;}
+@keyframes pulse{to{opacity:.5;}}
+
+.team-row{display:flex;gap:.5rem;flex-wrap:wrap;}
+.tcard{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.12);border-radius:11px;padding:.5rem .8rem;display:flex;align-items:center;gap:.5rem;flex:1;min-width:130px;}
+.tcard.active{border-color:#FFD700;}
+.tdot{width:10px;height:10px;border-radius:50%;}
+.tname{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+.tcnt{font-size:1.1rem;font-weight:900;margin-left:auto;}
+.tbadges{display:flex;gap:.2rem;flex-wrap:wrap;}
+.badge{font-size:.65rem;padding:.1rem .3rem;border-radius:4px;font-weight:700;}
+.b-s{background:rgba(52,152,219,.3);color:#3498db;}
+.b-t{background:rgba(155,89,182,.3);color:#9b59b6;}
+.b-p{background:rgba(255,215,0,.15);color:#FFD700;}
+
+.q-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:1.5rem;flex:1;display:flex;flex-direction:column;gap:.75rem;}
+.q-type{padding:.3rem .85rem;border-radius:999px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;align-self:flex-start;}
+.q-text{font-size:clamp(1.3rem,2.5vw,2.2rem);font-weight:700;line-height:1.35;}
+.q-none{color:rgba(255,255,255,.3);font-style:italic;font-size:1rem;}
+.ans-box{background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.25);border-radius:12px;padding:1rem 1.25rem;}
+.ans-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#FFD700;margin-bottom:.25rem;}
+.ans-text{font-size:clamp(1.1rem,2vw,1.6rem);font-weight:900;}
+
+.pu-row{display:flex;gap:1rem;align-items:flex-start;}
+.pu-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:.9rem;}
+.pu-title{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.4);margin-bottom:.5rem;}
+#pu-map{display:block;}
+.legend{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem;}
+.leg-item{font-size:.75rem;}
+
+.no-game{display:flex;align-items:center;justify-content:center;flex:1;flex-direction:column;gap:.5rem;color:rgba(255,255,255,.3);}
+.no-game-ico{font-size:3rem;}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="logo">⬡ AZ-kvíz-up &mdash; Moderátor</span>
+  <div class="turn-pill" id="turn-pill" style="display:none;">
+    <span class="turn-dot" id="turn-dot"></span>
+    <span id="turn-name">—</span>
+  </div>
+  <span class="timer" id="timer" style="display:none;"></span>
+</div>
+
+<div class="team-row" id="team-row"></div>
+
+<div class="q-card" id="q-card">
+  <div class="no-game"><div class="no-game-ico">⏳</div><div>Čekám na spuštění hry…</div></div>
+</div>
+
+<div class="pu-row" id="pu-row" style="display:none;">
+  <div class="pu-card">
+    <div class="pu-title">🗝️ Tajná políčka</div>
+    <svg id="pu-map"></svg>
+    <div class="legend">
+      <span class="leg-item">🛡️ Štít</span>
+      <span class="leg-item">💣 Bomba</span>
+      <span class="leg-item">👻 Duch</span>
+      <span class="leg-item">🕸️ Past</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const PU_ICONS={shield:'🛡️',bomb:'💣',ghost:'👻',web:'🕸️'};
+
+function hexPixel(q,r,size){
+  return{x:size*(Math.sqrt(3)*q+Math.sqrt(3)/2*r), y:size*(3/2*r)};
+}
+function hexPolyPts(cx,cy,size){
+  return Array.from({length:6},(_,i)=>{
+    const a=Math.PI/180*(60*i-30);
+    return `${(cx+size*Math.cos(a)).toFixed(1)},${(cy+size*Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+}
+function hexDist(q1,r1,q2,r2){return(Math.abs(q1-q2)+Math.abs(r1-r2)+Math.abs(q1+r1-q2-r2))/2;}
+
+function renderPuMap(hexes, colors, sideTeamMap){
+  const svg=document.getElementById('pu-map');
+  if(!hexes){svg.innerHTML='';return;}
+  const keys=Object.keys(hexes);
+  const size=14, pad=size+3;
+  const pos=keys.map(k=>{const h=hexes[k];return hexPixel(h.q,h.r,size);});
+  const minX=Math.min(...pos.map(p=>p.x))-pad;
+  const minY=Math.min(...pos.map(p=>p.y))-pad;
+  const maxX=Math.max(...pos.map(p=>p.x))+pad;
+  const maxY=Math.max(...pos.map(p=>p.y))+pad;
+  svg.setAttribute('width',maxX-minX);svg.setAttribute('height',maxY-minY);
+  svg.setAttribute('viewBox',`${minX} ${minY} ${maxX-minX} ${maxY-minY}`);
+  svg.innerHTML='';
+  keys.forEach(k=>{
+    const h=hexes[k];
+    const {x,y}=hexPixel(h.q,h.r,size);
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('points',hexPolyPts(x,y,size*.9));
+
+    let fill,stroke,strokeW='0.8';
+    if(h.owner!==null&&colors&&colors[h.owner]){
+      fill=colors[h.owner]+'aa'; stroke=colors[h.owner]; strokeW='1.5';
+    } else if(h.state==='gray'){
+      fill='rgba(150,150,150,0.35)'; stroke='rgba(150,150,150,0.6)';
+    } else {
+      const ti=(sideTeamMap&&h.startSide!=null)?sideTeamMap[h.startSide]:null;
+      fill=ti!=null?(colors[ti]+'22'):'rgba(255,255,255,0.04)';
+      stroke=ti!=null?(colors[ti]+'77'):'rgba(255,255,255,0.12)';
+    }
+    poly.setAttribute('fill',fill);
+    poly.setAttribute('stroke',stroke);
+    poly.setAttribute('stroke-width',strokeW);
+    g.appendChild(poly);
+
+    // Power-up icon (always visible in mod view)
+    if(h.powerup&&!h.powerupUsed){
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',x);t.setAttribute('y',y+size*.35);
+      t.setAttribute('text-anchor','middle');t.setAttribute('font-size',size*.8);
+      t.textContent=PU_ICONS[h.powerup]||'?';
+      g.appendChild(t);
+    }
+    // Center heart
+    if(h.q===0&&h.r===0){
+      const c=document.createElementNS('http://www.w3.org/2000/svg','text');
+      c.setAttribute('x',x);c.setAttribute('y',y+size*.35);
+      c.setAttribute('text-anchor','middle');c.setAttribute('font-size',size*.7);
+      c.setAttribute('fill','#FFD700');c.textContent='♥';
+      g.appendChild(c);
+    }
+    svg.appendChild(g);
+  });
+}
+
+function render(s){
+  if(!s||s.phase==='setup'){
+    document.getElementById('q-card').innerHTML='<div class="no-game"><div class="no-game-ico">⏳</div><div>Hra ještě nezačala…</div></div>';
+    document.getElementById('team-row').innerHTML='';
+    document.getElementById('turn-pill').style.display='none';
+    document.getElementById('timer').style.display='none';
+    document.getElementById('pu-row').style.display='none';
+    return;
+  }
+
+  // Turn pill
+  const tp=document.getElementById('turn-pill');
+  tp.style.display='flex';
+  document.getElementById('turn-dot').style.background=s.colors[s.currentTeam]||'#fff';
+  document.getElementById('turn-name').textContent=(s.teams[s.currentTeam]||{}).name||'—';
+
+  // Timer
+  const tEl=document.getElementById('timer');
+  tEl.style.display='block';
+  tEl.textContent=s.timerLeft+'s';
+  tEl.className='timer'+(s.timerLeft<=5?' low':'');
+
+  // Teams
+  document.getElementById('team-row').innerHTML=(s.teams||[]).map((t,i)=>{
+    const c=s.colors[i]||'#fff';
+    const puB=(t.powerups||[]).map(p=>`<span class="badge b-p">${PU_ICONS[p.type]||''}×${p.turnsLeft}</span>`).join('');
+    return `<div class="tcard${i===s.currentTeam?' active':''}">
+      <span class="tdot" style="background:${c}"></span>
+      <span class="tname" style="color:${c}">${esc(t.name)}</span>
+      <span class="tbadges">
+        ${t.shields>0?`<span class="badge b-s">🛡️×${t.shields}</span>`:''}
+        ${t.trapped?'<span class="badge b-t">🕸️</span>':''}
+        ${puB}
+      </span>
+      <span class="tcnt">${t.hexCount}</span>
+    </div>`;
+  }).join('');
+
+  // Question
+  const qc=document.getElementById('q-card');
+  if(!s.currentQ){
+    qc.innerHTML='<div class="q-none">Žádná otázka – vyber políčko na plánu.</div>';
+  } else {
+    const typeStyle=s.currentQ.type==='duel'
+      ?'background:rgba(231,76,60,.2);color:#e74c3c;'
+      :'background:rgba(52,152,219,.15);color:#3498db;';
+    const typeLabel=s.currentQ.type==='duel'?'⚔️ DUEL':'❓ Otázka';
+    const ansHtml=`<div class="ans-box"><div class="ans-label">✓ Správná odpověď</div><div class="ans-text">${esc(s.currentQ.a)}</div></div>`;
+    qc.innerHTML=`<span class="q-type" style="${typeStyle}">${typeLabel}</span>
+      <div class="q-text">${esc(s.currentQ.q)}</div>
+      ${s.currentQ.cat?`<div style="font-size:.78rem;color:rgba(255,255,255,.4);">${esc(s.currentQ.cat)}</div>`:''}
+      ${ansHtml}`;
+  }
+
+  // Power-up map
+  const puRow=document.getElementById('pu-row');
+  if(s.hexes){
+    puRow.style.display='flex';
+    renderPuMap(s.hexes, s.colors, s.sideTeamMap);
+  }
+}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function tick(){
+  try{
+    const raw=localStorage.getItem('azkviz_mod');
+    if(raw) render(JSON.parse(raw));
+  }catch(e){}
+}
+
+tick();
+setInterval(tick,500);
+</script>
+</body>
+</html>
